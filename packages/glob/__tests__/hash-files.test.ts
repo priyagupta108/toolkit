@@ -2,6 +2,8 @@ import * as io from '../../io/src/io'
 import * as path from 'path'
 import {hashFiles} from '../src/glob'
 import {promises as fs} from 'fs'
+import * as os from 'os'
+
 
 const IS_WINDOWS = process.platform === 'win32'
 
@@ -129,3 +131,23 @@ async function createSymlinkDir(real: string, link: string): Promise<void> {
     await fs.symlink(real, link)
   }
 }
+
+it('should respect allowed roots, patterns, temp dirs, and opt-in', async () => {
+  const root = path.join(getTestTemp(), 'secure-roots')
+  await fs.mkdir(root, {recursive: true})
+  await fs.writeFile(path.join(root, 'in.txt'), 'inside')
+  const outside = path.join(os.tmpdir(), 'out.txt')
+  await fs.writeFile(outside, 'outside')
+
+  // Only inside file is hashed
+  let hash = await hashFiles(`${root}/*.txt`, '', {allowedRoots: [root], patterns: ['in.txt']})
+  expect(hash).not.toEqual('')
+
+  // Both files can be hashed with opt-in
+  hash = await hashFiles(`${root}/*.txt\n${outside}`, '', {
+    allowedRoots: [root],
+    allowAdvancedAccess: true,
+    patterns: ['in.txt', 'out.txt']
+  })
+  expect(hash).not.toEqual('')
+})

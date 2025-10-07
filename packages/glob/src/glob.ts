@@ -23,7 +23,7 @@ export async function create(
  *
  * @param patterns  Patterns separated by newlines
  * @param currentWorkspace  Workspace used when matching files
- * @param options   Glob options
+ * @param options   HashFileOptions including roots, patterns, temp dirs, opt-in
  * @param verbose   Enables verbose logging
  */
 export async function hashFiles(
@@ -32,10 +32,12 @@ export async function hashFiles(
   options?: HashFileOptions,
   verbose: Boolean = false
 ): Promise<string> {
-  let followSymbolicLinks = true
-  if (options && typeof options.followSymbolicLinks === 'boolean') {
-    followSymbolicLinks = options.followSymbolicLinks
+  // Pass through followSymbolicLinks and any other relevant options for globbing.
+  const globOptions: GlobOptions = {
+    followSymbolicLinks: options?.followSymbolicLinks
+    // Add other options as needed for globbing here.
   }
-  const globber = await create(patterns, {followSymbolicLinks})
-  return _hashFiles(globber, currentWorkspace, verbose)
+  const globber = await create(patterns, globOptions)
+  // Now pass all HashFileOptions to the hashing logic for enforcement
+  return _hashFiles(globber, currentWorkspace, options, verbose)
 }

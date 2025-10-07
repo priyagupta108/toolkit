@@ -214,3 +214,24 @@ On Linux/macOS `\` is also treated as an escape character.
 
 - Publish new module `@actions/glob`
 - Publish docs for the module (add link from `./README.md` to new doc `./packages/glob/README.md`)
+
+## Secure File Hashing Combination Approach
+
+- Default Restriction: Only files under `GITHUB_WORKSPACE` and `GITHUB_ACTION_PATH` are hashed by default.
+- Configurable Roots: Specify additional roots with `allowedRoots: ['/mnt/data']`
+- Pattern-based Allowlist: Use `patterns: ['*.log', '*.txt']` for granular selection.
+- Temporary Directory Inclusion: Enable with `includeTempDirs: true`
+- Explicit Opt-in: Use `allowAdvancedAccess: true` to allow hashing outside defaults.
+- Logging/Audit: Advanced accesses are logged at runtime.
+
+### Example:
+
+```js
+const options = {
+  allowedRoots: ['/mnt/data'],
+  includeTempDirs: true,
+  allowAdvancedAccess: false,
+  patterns: ['*.txt']
+}
+const hash = await glob.hashFiles('**/*.txt', process.env.GITHUB_WORKSPACE, options)
+```

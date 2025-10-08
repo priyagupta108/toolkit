@@ -16,12 +16,23 @@ export async function hashFiles(
   const githubWorkspace = currentWorkspace
     ? currentWorkspace
     : process.env['GITHUB_WORKSPACE'] ?? process.cwd()
+
+  // NEW: Support GITHUB_ACTION_PATH as an allowed root
+  const allowedRoots: string[] = [githubWorkspace]
+  if (process.env['GITHUB_ACTION_PATH']) {
+    allowedRoots.push(path.resolve(process.env['GITHUB_ACTION_PATH']))
+  }
+
   const result = crypto.createHash('sha256')
   let count = 0
   for await (const file of globber.globGenerator()) {
     writeDelegate(file)
-    if (!file.startsWith(`${githubWorkspace}${path.sep}`)) {
-      writeDelegate(`Ignore '${file}' since it is not under GITHUB_WORKSPACE.`)
+    const filePath = path.resolve(file)
+    const isAllowed = allowedRoots.some(root =>
+      filePath.startsWith(root + path.sep)
+    )
+    if (!isAllowed) {
+      writeDelegate(`Ignore '${file}' since it is not under an allowed root.`)
       continue
     }
     if (fs.statSync(file).isDirectory()) {

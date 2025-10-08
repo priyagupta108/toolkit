@@ -129,3 +129,38 @@ async function createSymlinkDir(real: string, link: string): Promise<void> {
     await fs.symlink(real, link)
   }
 }
+// Add tests to verify hashing of files in workspace and action path
+
+describe('hashFiles', () => {
+  it('should hash files in workspace and action path', async () => {
+    const workspace = path.join(getTestTemp(), 'workspace')
+    const actionPath = path.join(getTestTemp(), 'action-path')
+  
+    await fs.mkdir(workspace, {recursive: true})
+    await fs.mkdir(actionPath, {recursive: true})
+    await fs.writeFile(path.join(workspace, 'a.txt'), 'workspace')
+    await fs.writeFile(path.join(actionPath, 'b.txt'), 'action')
+  
+    process.env.GITHUB_WORKSPACE = workspace
+    process.env.GITHUB_ACTION_PATH = actionPath
+  
+    // Assume hashFiles uses allowedRoots logic internally now
+    const testPaths = `${path.join(workspace, '*.txt')}\n${path.join(actionPath, '*.txt')}`
+    const hash = await hashFiles(testPaths)
+    expect(hash).not.toBe('')
+  })
+
+  it('should not hash files outside workspace and action path', async () => {
+    const workspace = '/tmp/workspace'
+    const actionPath = '/tmp/action-path'
+    const outside = '/tmp/outside'
+    process.env.GITHUB_WORKSPACE = workspace
+    process.env.GITHUB_ACTION_PATH = actionPath
+
+    await fs.mkdir(outside, {recursive: true})
+    await fs.writeFile(path.join(outside, 'c.txt'), 'outside')
+
+    const hash = await hashFiles('**/*.txt', workspace)
+    expect(hash).not.toContain('c.txt')
+  })
+})

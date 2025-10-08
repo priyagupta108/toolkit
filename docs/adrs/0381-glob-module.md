@@ -214,3 +214,9 @@ On Linux/macOS `\` is also treated as an escape character.
 
 - Publish new module `@actions/glob`
 - Publish docs for the module (add link from `./README.md` to new doc `./packages/glob/README.md`)
+
+## Update: Default Roots for hashFiles
+
+As of [DATE], `hashFiles` supports hashing files in both the workspace (`GITHUB_WORKSPACE`) and the current action directory (`GITHUB_ACTION_PATH`) by default. This enables composite actions to use files from their own directories for cache keys and other workflows.
+
+No configuration is needed—both locations are trusted by default.

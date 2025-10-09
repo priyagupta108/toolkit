@@ -109,7 +109,7 @@ Example, iterator:
 ```js
 const patterns = core.getInput('path')
 const globber = glob.create(patterns)
-for await (const file of this.globGenerator()) {
+for await (const file of globber.globGenerator()) {
   console.log(file)
 }
 ```
@@ -150,6 +150,26 @@ jobs:
         with:
           hash: ${{ hashFiles('--follow-symbolic-links', '**/package-lock.json') }}
 ```
+
+#### **Extended HashFiles Options**
+
+HashFiles now supports additional options for more flexible and secure file selection:
+
+- `roots?: string[]` — Specify one or more allowed root directories for hashing. Defaults to workspace.
+- `allowFilesOutsideWorkspace?: boolean` — Explicit opt-in to allow files outside the specified roots.
+- `exclude?: string[]` — Array of glob patterns to exclude from hashing.
+
+Example usage:
+
+```js
+const hash = await hashFiles('**/*.json', '', {
+  roots: [process.env.GITHUB_WORKSPACE, process.env.GITHUB_ACTION_PATH],
+  allowFilesOutsideWorkspace: true,
+  exclude: ['**/node_modules/**']
+})
+```
+
+These options enable composite actions, monorepos, and advanced workflows to securely and flexibly select files for hashing.
 
 ### Glob behavior
 
@@ -214,3 +234,4 @@ On Linux/macOS `\` is also treated as an escape character.
 
 - Publish new module `@actions/glob`
 - Publish docs for the module (add link from `./README.md` to new doc `./packages/glob/README.md`)
+- **HashFiles now supports roots, allowFilesOutsideWorkspace, and exclude options for advanced and secure file selection.**

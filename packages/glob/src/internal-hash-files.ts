@@ -110,9 +110,11 @@ export async function hashFiles(
   // fail if any files outside root found without opt-in
   if (!allowOutside && outsideRootFiles.length > 0) {
     throw new Error(
-      `Some files are outside your workspace:\n` +
-        outsideRootFiles.map(f => `- ${f}`).join('\n') +
-        `\nTo include them, set 'allowFilesOutsideWorkspace: true' in your options.`
+      `Some files are outside your workspace:\n${outsideRootFiles
+        .map(f => `- ${f}`)
+        .join(
+          '\n'
+        )}\nTo include them, set 'allowFilesOutsideWorkspace: true' in your options.`
     )
   }
 

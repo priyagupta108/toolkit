@@ -41,7 +41,7 @@ export async function hashFiles(
   // Determine roots for inclusion (default to currentWorkspace)
   const githubWorkspace = currentWorkspace
     ? currentWorkspace
-    : process.env['GITHUB_WORKSPACE'] ?? process.cwd()
+    : (process.env['GITHUB_WORKSPACE'] ?? process.cwd())
   const roots = options?.roots ?? [githubWorkspace]
   const allowOutside = options?.allowFilesOutsideWorkspace ?? false
   const excludePatterns: string[] = options?.exclude ?? []

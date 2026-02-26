@@ -4,8 +4,8 @@ import * as fs from 'fs'
 import * as stream from 'stream'
 import * as util from 'util'
 import * as path from 'path'
-import {Globber} from ./glob.js'
-import {HashFileOptions} from './internal-hash-file-options'
+import {Globber} from './glob.js'
+import {HashFileOptions} from './internal-hash-file-options.js'
 
 /**
  * Symlink Protection: Checks if the realpath of file is inside any of the realpaths of roots.

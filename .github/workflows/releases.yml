@@ -24,7 +24,7 @@ on:
 
 jobs:
   test:
-    runs-on: macos-latest-large
+    runs-on: ubuntu-latest
 
     steps:
       - name: setup repo
@@ -61,7 +61,7 @@ jobs:
           path: packages/${{ github.event.inputs.package }}/*.tgz
 
   publish:
-    runs-on: macos-latest-large
+    runs-on: ubuntu-slim
     needs: test
     environment: npm-publish
     permissions:
@@ -69,15 +69,15 @@ jobs:
       id-token: write
     steps:
 
+      - name: Set Node.js 24.x
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.x
+
       - name: download artifact
         uses: actions/download-artifact@v4
         with:
           name: ${{ github.event.inputs.package }}
-
-      - name: setup authentication
-        run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> .npmrc
-        env:
-          NPM_TOKEN: ${{ secrets.TOKEN }}
 
       - name: publish
         run: npm publish --provenance *.tgz

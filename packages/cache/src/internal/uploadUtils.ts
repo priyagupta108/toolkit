@@ -5,9 +5,9 @@ import {
   BlockBlobClient,
   BlockBlobParallelUploadOptions
 } from '@azure/storage-blob'
-import {TransferProgressEvent} from '@azure/ms-rest-js'
-import {InvalidResponseError} from './shared/errors'
-import {UploadOptions} from '../options'
+import {TransferProgressEvent} from '@azure/core-rest-pipeline'
+import {InvalidResponseError} from './shared/errors.js'
+import {UploadOptions} from '../options.js'
 
 /**
  * Class for tracking the upload state and displaying stats.

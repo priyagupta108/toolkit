@@ -1,9 +1,9 @@
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import * as core from '../src/core'
+import * as core from '../src/core.js'
 import {HttpClient} from '@actions/http-client'
-import {toCommandProperties} from '../src/utils'
+import {toCommandProperties} from '../src/utils.js'
 
 /* eslint-disable @typescript-eslint/unbound-method */
 
@@ -677,5 +677,8 @@ describe('oidc-client-tests', () => {
     const http = new HttpClient('actions/oidc-client')
     const res = await http.get(getTokenEndPoint())
     expect(res.message.statusCode).toBe(200)
+    // Consume the response to close the socket
+    await res.readBody()
+    res.message.destroy()
   })
 })

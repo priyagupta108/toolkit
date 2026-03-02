@@ -4,8 +4,12 @@ import * as fs from 'fs'
 import * as stream from 'stream'
 import * as util from 'util'
 import * as path from 'path'
+import minimatch from 'minimatch'
 import {Globber} from './glob.js'
 import {HashFileOptions} from './internal-hash-file-options.js'
+
+type IMinimatchOptions = minimatch.IOptions
+const {Minimatch} = minimatch
 
 /**
  * Symlink Protection: Checks if the realpath of file is inside any of the realpaths of roots.
@@ -19,13 +23,33 @@ function isInResolvedRoots(
   return resolvedRoots.some(root => resolvedFile.startsWith(root + path.sep))
 }
 
-function isExcluded(file: string, excludePatterns: string[]): boolean {
-  const basename = path.basename(file)
+function normalizeForMatch(p: string): string {
+  // minimatch expects "/"-style separators
+  return p.split(path.sep).join('/')
+}
+
+function mm(pat: string, target: string, matchBase: boolean): boolean {
+  return new Minimatch(pat, {dot: true, matchBase} as IMinimatchOptions).match(
+    target
+  )
+}
+
+function isExcluded(
+  file: string,
+  excludePatterns: string[],
+  githubWorkspace: string
+): boolean {
+  if (!excludePatterns || excludePatterns.length === 0) return false
+
+  const abs = path.resolve(file)
+  const absNorm = normalizeForMatch(abs)
+
+  const rel = path.relative(githubWorkspace, abs)
+  const relNorm = normalizeForMatch(rel)
+
   return excludePatterns.some(pattern => {
-    if (pattern.startsWith('*.')) {
-      return basename.endsWith(pattern.slice(1))
-    }
-    return basename === pattern
+    const pat = normalizeForMatch(pattern)
+    return mm(pat, absNorm, false) || mm(pat, relNorm, true)
   })
 }
 
@@ -60,9 +84,10 @@ export async function hashFiles(
   let count = 0
   for await (const file of globber.globGenerator()) {
     writeDelegate(file)
+
     // Exclude matching patterns
-    if (isExcluded(file, excludePatterns)) {
-      writeDelegate(`Exclude '${file}' (pattern match).`)
+    if (isExcluded(file, excludePatterns, githubWorkspace)) {
+      writeDelegate(`Exclude '${file}' (exclude pattern match).`)
       continue
     }
 
@@ -84,7 +109,6 @@ export async function hashFiles(
         writeDelegate(
           `Including '${file}' since it is outside the allowed workspace root(s) and 'allowFilesOutsideWorkspace' is enabled.`
         )
-        // continue to hashing
       } else {
         writeDelegate(
           `Ignore '${file}' since it is not under allowed workspace root(s).`

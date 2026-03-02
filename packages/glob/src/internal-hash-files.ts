@@ -56,9 +56,7 @@ function isExcluded(
     // Otherwise do path-based matching for patterns like "**/node_modules/**".
     const isBasenamePattern = !pat.includes('/')
 
-    return (
-      mm(pat, absNorm, false) || mm(pat, relNorm, isBasenamePattern)
-    )
+    return mm(pat, absNorm, false) || mm(pat, relNorm, isBasenamePattern)
   })
 }
 
@@ -70,6 +68,7 @@ export async function hashFiles(
 ): Promise<string> {
   const writeDelegate = verbose ? core.info : core.debug
   let hasMatch = false
+  let matchedAny = false
 
   // Determine roots for inclusion (default to currentWorkspace)
   const githubWorkspace = currentWorkspace
@@ -93,6 +92,7 @@ export async function hashFiles(
   let count = 0
 
   for await (const file of globber.globGenerator()) {
+    matchedAny = true
     writeDelegate(file)
 
     // Symlink Protection: resolve real path of the file (use this for exclude + hashing)
@@ -121,7 +121,7 @@ export async function hashFiles(
         )
       } else {
         writeDelegate(
-          `Ignore '${file}' since it is not under allowed workspace root(s).`
+          `Skip '${file}' since it is not under allowed workspace root(s).`
         )
         continue
       }
@@ -142,10 +142,10 @@ export async function hashFiles(
 
   result.end()
 
-  // fail if any files outside root found without opt-in
+  // Warn if some matched files were outside roots and were skipped.
   if (!allowOutside && outsideRootFiles.length > 0) {
-    throw new Error(
-      `Some files are outside your workspace:\n${outsideRootFiles
+    core.warning(
+      `Some files matched your patterns but were outside the allowed root(s) and were skipped:\n${outsideRootFiles
         .map(f => `- ${f}`)
         .join(
           '\n'
@@ -153,11 +153,26 @@ export async function hashFiles(
     )
   }
 
+  // Hybrid: if everything matched was outside roots, fail loudly (prevents confusing empty hash)
+  if (!allowOutside && matchedAny && !hasMatch && outsideRootFiles.length > 0) {
+    throw new Error(
+      `All files matched by your glob were outside the allowed root(s), so nothing could be hashed.\n` +
+        `To include them, set 'allowFilesOutsideWorkspace: true' (and/or add additional 'roots').\n` +
+        `Outside files:\n${outsideRootFiles.map(f => `- ${f}`).join('\n')}`
+    )
+  }
+
   if (hasMatch) {
     writeDelegate(`Found ${count} files to hash.`)
     return result.digest('hex')
   } else {
-    writeDelegate(`No matches found for glob`)
+    if (!allowOutside && outsideRootFiles.length > 0) {
+      writeDelegate(
+        `No eligible files remained after skipping files outside the allowed root(s).`
+      )
+    } else {
+      writeDelegate(`No matches found for glob`)
+    }
     return ''
   }
 }

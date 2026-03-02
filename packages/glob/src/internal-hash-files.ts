@@ -19,8 +19,10 @@ function isInResolvedRoots(
   resolvedFile: string,
   resolvedRoots: string[]
 ): boolean {
-  // Ensure normalized path comparison with trailing separator
-  return resolvedRoots.some(root => resolvedFile.startsWith(root + path.sep))
+  // Allow exact root equality, and root directory containment
+  return resolvedRoots.some(
+    root => resolvedFile === root || resolvedFile.startsWith(root + path.sep)
+  )
 }
 
 function normalizeForMatch(p: string): string {
@@ -49,7 +51,14 @@ function isExcluded(
 
   return excludePatterns.some(pattern => {
     const pat = normalizeForMatch(pattern)
-    return mm(pat, absNorm, false) || mm(pat, relNorm, true)
+
+    // If the pattern is basename-only (no "/"), allow matchBase so "*.log" works anywhere.
+    // Otherwise do path-based matching for patterns like "**/node_modules/**".
+    const isBasenamePattern = !pat.includes('/')
+
+    return (
+      mm(pat, absNorm, false) || mm(pat, relNorm, isBasenamePattern)
+    )
   })
 }
 
@@ -82,16 +91,11 @@ export async function hashFiles(
   const outsideRootFiles: string[] = []
   const result = crypto.createHash('sha256')
   let count = 0
+
   for await (const file of globber.globGenerator()) {
     writeDelegate(file)
 
-    // Exclude matching patterns
-    if (isExcluded(file, excludePatterns, githubWorkspace)) {
-      writeDelegate(`Exclude '${file}' (exclude pattern match).`)
-      continue
-    }
-
-    // Symlink Protection: resolve real path of the file
+    // Symlink Protection: resolve real path of the file (use this for exclude + hashing)
     let resolvedFile: string
     try {
       resolvedFile = fs.realpathSync(file)
@@ -100,6 +104,12 @@ export async function hashFiles(
         `Could not read "${file}". Please check symlinks and file access. Details: ${err}`
       )
       continue // skip if unable to resolve symlink
+    }
+
+    // Exclude matching patterns (apply to resolved path for symlink-safety)
+    if (isExcluded(resolvedFile, excludePatterns, githubWorkspace)) {
+      writeDelegate(`Exclude '${file}' (exclude pattern match).`)
+      continue
     }
 
     // Check if in resolved roots
@@ -129,6 +139,7 @@ export async function hashFiles(
     count++
     hasMatch = true
   }
+
   result.end()
 
   // fail if any files outside root found without opt-in

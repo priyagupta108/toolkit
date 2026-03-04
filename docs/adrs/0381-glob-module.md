@@ -151,13 +151,17 @@ jobs:
           hash: ${{ hashFiles('--follow-symbolic-links', '**/package-lock.json') }}
 ```
 
-#### **Extended HashFiles Options**
+#### Extended HashFiles options (added later)
 
-HashFiles now supports additional options for more flexible and secure file selection:
+HashFiles supports additional options for more flexible and secure file selection:
 
-- `roots?: string[]` — Specify one or more allowed root directories for hashing. Defaults to workspace.
-- `allowFilesOutsideWorkspace?: boolean` — Explicit opt-in to allow files outside the specified roots.
+- `roots?: string[]` — Allowlist of root paths. Only files that resolve under (or equal) one of these roots are hashed. Defaults to [GITHUB_WORKSPACE] (or currentWorkspace if provided).
+- `allowFilesOutsideWorkspace?: boolean` — Explicit opt-in to include files outside the specified root path(s).
 - `exclude?: string[]` — Array of glob patterns to exclude from hashing.
+
+To improve security, file eligibility is evaluated using each file’s resolved (real) path to prevent symbolic link traversal outside the allowed root path(s).
+
+If glob patterns match files outside the allowed root path(s) and `allowFilesOutsideWorkspace` is not enabled, those files are skipped and a warning is emitted. To include those files, explicitly set `allowFilesOutsideWorkspace: true` and/or provide additional `roots`.
 
 Example usage:
 
@@ -234,4 +238,4 @@ On Linux/macOS `\` is also treated as an escape character.
 
 - Publish new module `@actions/glob`
 - Publish docs for the module (add link from `./README.md` to new doc `./packages/glob/README.md`)
-- **HashFiles now supports roots, allowFilesOutsideWorkspace, and exclude options for advanced and secure file selection.**
+- HashFiles now supports roots, allowFilesOutsideWorkspace, and exclude options for advanced and secure file selection.

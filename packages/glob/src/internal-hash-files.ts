@@ -144,7 +144,7 @@ export async function hashFiles(
 
   // Warn if some matched files were outside roots and were skipped.
   if (!allowOutside && outsideRootFiles.length > 0) {
-    core.warning(
+    writeDelegate(
       `Some files matched your patterns but were outside the allowed root(s) and were skipped:\n${outsideRootFiles
         .map(f => `- ${f}`)
         .join(
@@ -153,26 +153,11 @@ export async function hashFiles(
     )
   }
 
-  // Hybrid: if everything matched was outside roots, fail loudly (prevents confusing empty hash)
-  if (!allowOutside && matchedAny && !hasMatch && outsideRootFiles.length > 0) {
-    throw new Error(
-      `All files matched by your glob were outside the allowed root(s), so nothing could be hashed.\n` +
-        `To include them, set 'allowFilesOutsideWorkspace: true' (and/or add additional 'roots').\n` +
-        `Outside files:\n${outsideRootFiles.map(f => `- ${f}`).join('\n')}`
-    )
-  }
-
   if (hasMatch) {
     writeDelegate(`Found ${count} files to hash.`)
     return result.digest('hex')
   } else {
-    if (!allowOutside && outsideRootFiles.length > 0) {
-      writeDelegate(
-        `No eligible files remained after skipping files outside the allowed root(s).`
-      )
-    } else {
-      writeDelegate(`No matches found for glob`)
-    }
+    writeDelegate(`No matches found for glob`)
     return ''
   }
 }

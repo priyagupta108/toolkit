@@ -4,8 +4,12 @@ import * as fs from 'fs'
 import * as stream from 'stream'
 import * as util from 'util'
 import * as path from 'path'
+import minimatch from 'minimatch'
 import {Globber} from './glob.js'
 import {HashFileOptions} from './internal-hash-file-options.js'
+
+type IMinimatchOptions = minimatch.IOptions
+const {Minimatch} = minimatch
 
 /**
  * Symlink Protection: Checks if the realpath of file is inside any of the realpaths of roots.
@@ -15,17 +19,44 @@ function isInResolvedRoots(
   resolvedFile: string,
   resolvedRoots: string[]
 ): boolean {
-  // Ensure normalized path comparison with trailing separator
-  return resolvedRoots.some(root => resolvedFile.startsWith(root + path.sep))
+  // Allow exact root equality, and root directory containment
+  return resolvedRoots.some(
+    root => resolvedFile === root || resolvedFile.startsWith(root + path.sep)
+  )
 }
 
-function isExcluded(file: string, excludePatterns: string[]): boolean {
-  const basename = path.basename(file)
+function normalizeForMatch(p: string): string {
+  // minimatch expects "/"-style separators
+  return p.split(path.sep).join('/')
+}
+
+function mm(pat: string, target: string, matchBase: boolean): boolean {
+  return new Minimatch(pat, {dot: true, matchBase} as IMinimatchOptions).match(
+    target
+  )
+}
+
+function isExcluded(
+  file: string,
+  excludePatterns: string[],
+  githubWorkspace: string
+): boolean {
+  if (!excludePatterns || excludePatterns.length === 0) return false
+
+  const abs = path.resolve(file)
+  const absNorm = normalizeForMatch(abs)
+
+  const rel = path.relative(githubWorkspace, abs)
+  const relNorm = normalizeForMatch(rel)
+
   return excludePatterns.some(pattern => {
-    if (pattern.startsWith('*.')) {
-      return basename.endsWith(pattern.slice(1))
-    }
-    return basename === pattern
+    const pat = normalizeForMatch(pattern)
+
+    // If the pattern is basename-only (no "/"), allow matchBase so "*.log" works anywhere.
+    // Otherwise do path-based matching for patterns like "**/node_modules/**".
+    const isBasenamePattern = !pat.includes('/')
+
+    return mm(pat, absNorm, false) || mm(pat, relNorm, isBasenamePattern)
   })
 }
 
@@ -58,15 +89,11 @@ export async function hashFiles(
   const outsideRootFiles: string[] = []
   const result = crypto.createHash('sha256')
   let count = 0
+
   for await (const file of globber.globGenerator()) {
     writeDelegate(file)
-    // Exclude matching patterns
-    if (isExcluded(file, excludePatterns)) {
-      writeDelegate(`Exclude '${file}' (pattern match).`)
-      continue
-    }
 
-    // Symlink Protection: resolve real path of the file
+    // Symlink Protection: resolve real path of the file (use this for exclude + hashing)
     let resolvedFile: string
     try {
       resolvedFile = fs.realpathSync(file)
@@ -77,6 +104,12 @@ export async function hashFiles(
       continue // skip if unable to resolve symlink
     }
 
+    // Exclude matching patterns (apply to resolved path for symlink-safety)
+    if (isExcluded(resolvedFile, excludePatterns, githubWorkspace)) {
+      writeDelegate(`Exclude '${file}' (exclude pattern match).`)
+      continue
+    }
+
     // Check if in resolved roots
     if (!isInResolvedRoots(resolvedFile, resolvedRoots)) {
       outsideRootFiles.push(file)
@@ -84,10 +117,9 @@ export async function hashFiles(
         writeDelegate(
           `Including '${file}' since it is outside the allowed workspace root(s) and 'allowFilesOutsideWorkspace' is enabled.`
         )
-        // continue to hashing
       } else {
         writeDelegate(
-          `Ignore '${file}' since it is not under allowed workspace root(s).`
+          `Skip '${file}' since it is not under allowed workspace root(s).`
         )
         continue
       }
@@ -107,9 +139,9 @@ export async function hashFiles(
   }
   result.end()
 
-  // fail if any files outside root found without opt-in
+  // Warn if any files outside root found without opt-in
   if (!allowOutside && outsideRootFiles.length > 0) {
-    throw new Error(
+    writeDelegate(
       `Some files are outside your workspace:\n${outsideRootFiles
         .map(f => `- ${f}`)
         .join(

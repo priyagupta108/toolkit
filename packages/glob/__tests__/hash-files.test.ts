@@ -126,48 +126,105 @@ describe('globber', () => {
 
   it('hashes files in allowed roots only', async () => {
     const root = path.join(getTestTemp(), 'roots-hashfiles')
-    const rootA = path.join(root, 'a')
-    const rootB = path.join(root, 'b')
-    await fs.mkdir(rootA, {recursive: true})
-    await fs.mkdir(rootB, {recursive: true})
-    await fs.writeFile(path.join(rootA, 'fileA.txt'), 'A')
-    await fs.writeFile(path.join(rootB, 'fileB.txt'), 'B')
-    // Only hash files in rootA
-    const hash = await hashFiles(`${rootA}/*`, '', {
-      roots: [rootA]
+    const dir1 = path.join(root, 'dir1')
+    const dir2 = path.join(root, 'dir2')
+    await fs.mkdir(dir1, {recursive: true})
+    await fs.mkdir(dir2, {recursive: true})
+    await fs.writeFile(path.join(dir1, 'file1.txt'), 'test 1 file content')
+    await fs.writeFile(path.join(dir2, 'file2.txt'), 'test 2 file content')
+
+    // Only hash files in dir1
+    const hash1 = await hashFiles(`${dir1}/*`, '', {
+      roots: [dir1]
     })
-    expect(hash).not.toEqual('')
-    // For full assertion, run once and use the actual hash
+    expect(hash1).not.toEqual('')
+
+    // Determinism: running again yields the same value
+    const hash2 = await hashFiles(`${dir1}/*`, '', {
+      roots: [dir1]
+    })
+    expect(hash2).toEqual(hash1)
   })
 
-  it('allows files outside roots if opted-in', async () => {
+  it('skips outside-root matches by default (hash unchanged)', async () => {
+    const root = path.join(getTestTemp(), 'default-skip-outside-roots')
+    const dir1 = path.join(root, 'dir1')
+    const outsideDir = path.join(root, 'outsideDir')
+
+    await fs.mkdir(dir1, {recursive: true})
+    await fs.mkdir(outsideDir, {recursive: true})
+
+    await fs.writeFile(path.join(dir1, 'file1.txt'), 'test 1 file content')
+    await fs.writeFile(
+      path.join(outsideDir, 'fileOut.txt'),
+      'test outside file content'
+    )
+
+    const insideOnly = await hashFiles(`${dir1}/*`, '', {roots: [dir1]})
+    expect(insideOnly).not.toEqual('')
+
+    const patterns = `${dir1}/*\n${outsideDir}/*`
+    const defaultSkip = await hashFiles(patterns, '', {roots: [dir1]})
+
+    expect(defaultSkip).toEqual(insideOnly)
+  })
+
+  it('allows files outside roots if opted-in (hash changes + deterministic)', async () => {
     const root = path.join(getTestTemp(), 'allow-outside-roots')
-    const rootA = path.join(root, 'a')
-    const outside = path.join(root, 'outside')
-    await fs.mkdir(rootA, {recursive: true})
-    await fs.mkdir(outside, {recursive: true})
-    await fs.writeFile(path.join(rootA, 'fileA.txt'), 'A')
-    await fs.writeFile(path.join(outside, 'fileOut.txt'), 'OUT')
-    // Hash both, outside roots, opt-in
-    const hash = await hashFiles(`${rootA}/*\n${outside}/*`, '', {
-      roots: [rootA],
+    const dir1 = path.join(root, 'dir1')
+    const outsideDir = path.join(root, 'outsideDir')
+    await fs.mkdir(dir1, {recursive: true})
+    await fs.mkdir(outsideDir, {recursive: true})
+    await fs.writeFile(path.join(dir1, 'file1.txt'), 'test 1 file content')
+    await fs.writeFile(
+      path.join(outsideDir, 'fileOut.txt'),
+      'test outside file content'
+    )
+
+    const insideOnly = await hashFiles(`${dir1}/*`, '', {roots: [dir1]})
+    expect(insideOnly).not.toEqual('')
+
+    const patterns = `${dir1}/*\n${outsideDir}/*`
+    const withOptIn1 = await hashFiles(patterns, '', {
+      roots: [dir1],
       allowFilesOutsideWorkspace: true
     })
-    expect(hash).not.toEqual('')
-    // For full assertion, run once and use the actual hash
+    expect(withOptIn1).not.toEqual('')
+    expect(withOptIn1).not.toEqual(insideOnly)
+
+    const withOptIn2 = await hashFiles(patterns, '', {
+      roots: [dir1],
+      allowFilesOutsideWorkspace: true
+    })
+    expect(withOptIn2).toEqual(withOptIn1)
   })
 
   it('excludes files matching exclude patterns', async () => {
     const root = path.join(getTestTemp(), 'exclude-hashfiles')
     await fs.mkdir(root, {recursive: true})
-    await fs.writeFile(path.join(root, 'file1.txt'), '1')
-    await fs.writeFile(path.join(root, 'file2.log'), '2')
+    await fs.writeFile(path.join(root, 'file1.txt'), 'test 1 file content')
+    await fs.writeFile(path.join(root, 'file2.log'), 'test 2 file content')
+
+    const all = await hashFiles(`${root}/*`, '', {roots: [root]})
+    expect(all).not.toEqual('')
+
     // Exclude by exact filename and extension
-    const hash = await hashFiles(`${root}/*`, '', {
+    const excluded = await hashFiles(`${root}/*`, '', {
+      roots: [root],
       exclude: ['file2.log', '*.log']
     })
-    expect(hash).not.toEqual('')
-    // For full assertion, run once and use the actual hash
+    expect(excluded).not.toEqual('')
+
+    const justIncluded = await hashFiles(
+      `${path.join(root, 'file1.txt')}`,
+      '',
+      {
+        roots: [root]
+      }
+    )
+
+    expect(excluded).toEqual(justIncluded)
+    expect(excluded).not.toEqual(all)
   })
 })
 

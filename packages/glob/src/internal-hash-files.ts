@@ -121,8 +121,11 @@ export async function hashFiles(
     noext: true,
     nonegate: true
   }
-  
-  const excludeMatchers = buildExcludeMatchers(excludePatterns, minimatchOptions)
+
+  const excludeMatchers = buildExcludeMatchers(
+    excludePatterns,
+    minimatchOptions
+  )
 
   // Symlink Protection: resolve all roots up front, but don't fail the entire operation
   // if one root is invalid. Warn for invalid roots and proceed with the valid ones.

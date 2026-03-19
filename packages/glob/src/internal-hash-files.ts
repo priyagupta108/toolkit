@@ -29,11 +29,7 @@ type ExcludeMatcher = {
   workspaceRelativeMatcher: IMinimatch
 }
 
-/**
- * Checks if resolvedFile is inside any of resolvedRoots.
- * Uses path.relative() to handle filesystem roots (e.g. '/' or 'C:\'),
- * trailing separators, and case-insensitive filesystems on Windows.
- */
+// Checks if resolvedFile is inside any of resolvedRoots.
 function isInResolvedRoots(
   resolvedFile: string,
   resolvedRoots: string[]
@@ -43,7 +39,9 @@ function isInResolvedRoots(
     const normalizedRoot = IS_WINDOWS ? root.toLowerCase() : root
     if (normalizedFile === normalizedRoot) return true
     const rel = path.relative(normalizedRoot, normalizedFile)
-    return rel.length > 0 && !rel.startsWith('..')
+    return (
+      !path.isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${path.sep}`)
+    )
   })
 }
 
@@ -133,7 +131,7 @@ export async function hashFiles(
       core.warning(
         `Could not read "${file}". Please check symlinks and file access. Details: ${err}`
       )
-      continue // skip if unable to resolve symlink
+      continue
     }
 
     // Exclude matching patterns (apply to resolved path for symlink-safety)

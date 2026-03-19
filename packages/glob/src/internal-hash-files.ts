@@ -14,6 +14,8 @@ const {Minimatch} = minimatch
 
 const IS_WINDOWS = process.platform === 'win32'
 
+const MAX_WARNED_FILES = 10
+
 type ExcludeMatcher = {
   absolutePathMatcher: IMinimatch
   workspaceRelativeMatcher: IMinimatch
@@ -22,15 +24,25 @@ type ExcludeMatcher = {
 /**
  * Symlink Protection: Checks if the realpath of file is inside any of the realpaths of roots.
  * Prevents files escaping via symlink traversal.
+ *
+ * Uses path.relative() for containment check to correctly handle:
+ * - Filesystem roots (e.g. '/' on POSIX, 'C:\' on Windows)
+ * - Case-insensitive filesystems on Windows
+ * - Roots that may or may not end with a path separator
  */
 function isInResolvedRoots(
   resolvedFile: string,
   resolvedRoots: string[]
 ): boolean {
-  // Allow exact root equality, and root directory containment
-  return resolvedRoots.some(
-    root => resolvedFile === root || resolvedFile.startsWith(root + path.sep)
-  )
+  return resolvedRoots.some(root => {
+    if (resolvedFile === root) return true
+    const normalizedFile = IS_WINDOWS
+      ? resolvedFile.toLowerCase()
+      : resolvedFile
+    const normalizedRoot = IS_WINDOWS ? root.toLowerCase() : root
+    const rel = path.relative(normalizedRoot, normalizedFile)
+    return rel.length > 0 && !rel.startsWith('..')
+  })
 }
 
 function normalizeForMatch(p: string): string {
@@ -109,12 +121,8 @@ export async function hashFiles(
     noext: true,
     nonegate: true
   }
-
-  // Build exclude matchers once (perf)
-  const excludeMatchers = buildExcludeMatchers(
-    excludePatterns,
-    minimatchOptions
-  )
+  
+  const excludeMatchers = buildExcludeMatchers(excludePatterns, minimatchOptions)
 
   // Symlink Protection: resolve all roots up front, but don't fail the entire operation
   // if one root is invalid. Warn for invalid roots and proceed with the valid ones.
@@ -185,14 +193,18 @@ export async function hashFiles(
   }
   result.end()
 
-  // Warn if any files outside root found without opt-in.
+  // Warn if any files outside root were found without opt-in.
   if (!allowOutside && outsideRootFiles.length > 0) {
+    const shown = outsideRootFiles.slice(0, MAX_WARNED_FILES)
+    const remaining = outsideRootFiles.length - shown.length
+    const fileList = shown.map(f => `- ${f}`).join('\n')
+    const suffix =
+      remaining > 0
+        ? `\n  ...and ${remaining} more file(s). Enable debug logging to see all.`
+        : ''
     core.warning(
-      `Some matched files are outside the allowed root(s) and were skipped:\n${outsideRootFiles
-        .map(f => `- ${f}`)
-        .join(
-          '\n'
-        )}\nTo include them, set 'allowFilesOutsideWorkspace: true' in your options.`
+      `Some matched files are outside the allowed root(s) and were skipped:\n${fileList}${suffix}\n` +
+        `To include them, set 'allowFilesOutsideWorkspace: true' in your options.`
     )
   }
 

@@ -133,17 +133,28 @@ describe('globber', () => {
     await fs.writeFile(path.join(dir1, 'file1.txt'), 'test 1 file content')
     await fs.writeFile(path.join(dir2, 'file2.txt'), 'test 2 file content')
 
-    // Only hash files in dir1
-    const hash1 = await hashFiles(`${dir1}/*`, '', {
-      roots: [dir1]
-    })
-    expect(hash1).not.toEqual('')
+    // Broad pattern matches files in BOTH dirs — roots is what limits inclusion
+    const broadPattern = `${root}/**`
 
-    // Determinism: running again yields the same value
-    const hash2 = await hashFiles(`${dir1}/*`, '', {
-      roots: [dir1]
-    })
-    expect(hash2).toEqual(hash1)
+    // Only dir1 is an allowed root — dir2/file2.txt must be excluded
+    const hashDir1Only = await hashFiles(broadPattern, '', {roots: [dir1]})
+    expect(hashDir1Only).not.toEqual('')
+
+    // Only dir2 is an allowed root — dir1/file1.txt must be excluded
+    const hashDir2Only = await hashFiles(broadPattern, '', {roots: [dir2]})
+    expect(hashDir2Only).not.toEqual('')
+
+    // The two hashes must differ because different files were included
+    expect(hashDir1Only).not.toEqual(hashDir2Only)
+
+    // Both dirs as roots — must include all files, hash differs from either alone
+    const hashBoth = await hashFiles(broadPattern, '', {roots: [dir1, dir2]})
+    expect(hashBoth).not.toEqual(hashDir1Only)
+    expect(hashBoth).not.toEqual(hashDir2Only)
+
+    // Determinism: same roots always yields the same hash
+    const hashDir1Again = await hashFiles(broadPattern, '', {roots: [dir1]})
+    expect(hashDir1Again).toEqual(hashDir1Only)
   })
 
   it('skips outside-root matches by default (hash unchanged)', async () => {

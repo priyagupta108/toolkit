@@ -11,21 +11,25 @@ export interface HashFileOptions {
   followSymbolicLinks?: boolean
 
   /**
-   * Array of allowed root directories for hashing files.
-   * If not specified, defaults to [GITHUB_WORKSPACE].
+   * Array of allowed root directories. Only files that resolve under one of
+   * these roots will be included in the hash.
+   *
+   * @default [GITHUB_WORKSPACE]
    */
   roots?: string[]
 
   /**
-   * Explicit opt-in to allow files outside the workspace.
-   * If false or omitted, ONLY files in roots are hashed.
-   * If true, files outside roots (e.g., temp, action path) are allowed.
-   * Default: false
+   * Indicates whether files outside the allowed roots should be included.
+   * If false, outside-root files are skipped with a warning.
+   *
+   * @default false
    */
   allowFilesOutsideWorkspace?: boolean
 
   /**
-   * Array of glob patterns to exclude from hashing.
+   * Array of glob patterns for files to exclude from hashing.
+   *
+   * @default []
    */
   exclude?: string[]
 }

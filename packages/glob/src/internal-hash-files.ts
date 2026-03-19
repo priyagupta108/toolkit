@@ -13,8 +13,16 @@ type IMinimatchOptions = minimatch.IOptions
 const {Minimatch} = minimatch
 
 const IS_WINDOWS = process.platform === 'win32'
-
 const MAX_WARNED_FILES = 10
+
+const MINIMATCH_OPTIONS: IMinimatchOptions = {
+  dot: true,
+  nobrace: true,
+  nocase: IS_WINDOWS,
+  nocomment: true,
+  noext: true,
+  nonegate: true
+}
 
 type ExcludeMatcher = {
   absolutePathMatcher: IMinimatch
@@ -22,54 +30,39 @@ type ExcludeMatcher = {
 }
 
 /**
- * Symlink Protection: Checks if the realpath of file is inside any of the realpaths of roots.
- * Prevents files escaping via symlink traversal.
- *
- * Uses path.relative() for containment check to correctly handle:
- * - Filesystem roots (e.g. '/' on POSIX, 'C:\' on Windows)
- * - Case-insensitive filesystems on Windows
- * - Roots that may or may not end with a path separator
+ * Checks if resolvedFile is inside any of resolvedRoots.
+ * Uses path.relative() to handle filesystem roots (e.g. '/' or 'C:\'),
+ * trailing separators, and case-insensitive filesystems on Windows.
  */
 function isInResolvedRoots(
   resolvedFile: string,
   resolvedRoots: string[]
 ): boolean {
+  const normalizedFile = IS_WINDOWS ? resolvedFile.toLowerCase() : resolvedFile
   return resolvedRoots.some(root => {
-    if (resolvedFile === root) return true
-    const normalizedFile = IS_WINDOWS
-      ? resolvedFile.toLowerCase()
-      : resolvedFile
     const normalizedRoot = IS_WINDOWS ? root.toLowerCase() : root
+    if (normalizedFile === normalizedRoot) return true
     const rel = path.relative(normalizedRoot, normalizedFile)
     return rel.length > 0 && !rel.startsWith('..')
   })
 }
 
 function normalizeForMatch(p: string): string {
-  // minimatch expects "/"-style separators
   return p.split(path.sep).join('/')
 }
 
-function buildExcludeMatchers(
-  excludePatterns: string[],
-  minimatchOptions: IMinimatchOptions
-): ExcludeMatcher[] {
-  if (!excludePatterns || excludePatterns.length === 0) return []
-
+function buildExcludeMatchers(excludePatterns: string[]): ExcludeMatcher[] {
   return excludePatterns.map(pattern => {
     const normalizedPattern = normalizeForMatch(pattern)
-
-    // If the pattern is basename-only (no "/"), allow matchBase so "*.log" works anywhere.
-    // Otherwise do path-based matching for patterns like "**/node_modules/**".
+    // basename-only pattern (no "/") uses matchBase so "*.log" matches anywhere
     const isBasenamePattern = !normalizedPattern.includes('/')
-
     return {
       absolutePathMatcher: new Minimatch(normalizedPattern, {
-        ...minimatchOptions,
+        ...MINIMATCH_OPTIONS,
         matchBase: false
       } as IMinimatchOptions),
       workspaceRelativeMatcher: new Minimatch(normalizedPattern, {
-        ...minimatchOptions,
+        ...MINIMATCH_OPTIONS,
         matchBase: isBasenamePattern
       } as IMinimatchOptions)
     }
@@ -81,14 +74,12 @@ function isExcluded(
   excludeMatchers: ExcludeMatcher[],
   githubWorkspace: string
 ): boolean {
-  if (!excludeMatchers || excludeMatchers.length === 0) return false
-
+  if (excludeMatchers.length === 0) return false
   const absolutePath = path.resolve(resolvedFile)
   const absolutePathForMatch = normalizeForMatch(absolutePath)
-
-  const workspaceRelativePath = path.relative(githubWorkspace, absolutePath)
-  const workspaceRelativePathForMatch = normalizeForMatch(workspaceRelativePath)
-
+  const workspaceRelativePathForMatch = normalizeForMatch(
+    path.relative(githubWorkspace, absolutePath)
+  )
   return excludeMatchers.some(
     m =>
       m.absolutePathMatcher.match(absolutePathForMatch) ||
@@ -103,41 +94,21 @@ export async function hashFiles(
   verbose: Boolean = false
 ): Promise<string> {
   const writeDelegate = verbose ? core.info : core.debug
-  let hasMatch = false
-
-  // Determine roots for inclusion (default to currentWorkspace)
   const githubWorkspace = currentWorkspace
     ? currentWorkspace
     : (process.env['GITHUB_WORKSPACE'] ?? process.cwd())
-  const roots = options?.roots ?? [githubWorkspace]
   const allowOutside = options?.allowFilesOutsideWorkspace ?? false
-  const excludePatterns: string[] = options?.exclude ?? []
+  const excludeMatchers = buildExcludeMatchers(options?.exclude ?? [])
 
-  const minimatchOptions: IMinimatchOptions = {
-    dot: true,
-    nobrace: true,
-    nocase: IS_WINDOWS,
-    nocomment: true,
-    noext: true,
-    nonegate: true
-  }
-
-  const excludeMatchers = buildExcludeMatchers(
-    excludePatterns,
-    minimatchOptions
-  )
-
-  // Symlink Protection: resolve all roots up front, but don't fail the entire operation
-  // if one root is invalid. Warn for invalid roots and proceed with the valid ones.
+  // Resolve roots up front; warn and skip any that fail to resolve
   const resolvedRoots: string[] = []
-  for (const root of roots) {
+  for (const root of options?.roots ?? [githubWorkspace]) {
     try {
       resolvedRoots.push(fs.realpathSync(root))
     } catch (err) {
       core.warning(`Could not resolve root '${root}': ${err}`)
     }
   }
-
   if (resolvedRoots.length === 0) {
     core.warning(
       `Could not resolve any allowed root(s); no files will be considered for hashing.`
@@ -147,12 +118,14 @@ export async function hashFiles(
 
   const outsideRootFiles: string[] = []
   const result = crypto.createHash('sha256')
+  const pipeline = util.promisify(stream.pipeline)
+  let hasMatch = false
   let count = 0
 
   for await (const file of globber.globGenerator()) {
     writeDelegate(file)
 
-    // Symlink Protection: resolve real path of the file (use this for exclude + hashing)
+    // Resolve real path of the file for symlink-safe exclude + root checking
     let resolvedFile: string
     try {
       resolvedFile = fs.realpathSync(file)
@@ -188,7 +161,6 @@ export async function hashFiles(
     }
 
     const hash = crypto.createHash('sha256')
-    const pipeline = util.promisify(stream.pipeline)
     await pipeline(fs.createReadStream(resolvedFile), hash)
     result.write(hash.digest())
     count++

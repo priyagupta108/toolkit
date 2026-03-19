@@ -90,16 +90,14 @@ To improve security, file eligibility is evaluated using each file’s resolved 
 - `allowFilesOutsideWorkspace?: boolean` — Explicit opt-in to include files outside the specified root path(s).
 - `exclude?: string[]` — Glob patterns to exclude from hashing.
 
-If files match your patterns but are outside the allowed roots and `allowFilesOutsideWorkspace` is not enabled, those files are skipped and a warning is emitted. If all matches are outside the allowed roots, an error is thrown.
+If files match your patterns but are outside the allowed roots and `allowFilesOutsideWorkspace` is not enabled, those files are skipped and a warning is emitted. If no eligible files remain after filtering, `hashFiles` returns an empty string (`''`).
 
 ### Example
 
 ```js
 const glob = require('@actions/glob')
 
-const globber = await glob.create('**/*.json')
-
-const hash = await glob.hashFiles(globber, process.env.GITHUB_WORKSPACE || '', {
+const hash = await glob.hashFiles('**/*.json', process.env.GITHUB_WORKSPACE || '', {
   roots: [process.env.GITHUB_WORKSPACE, process.env.GITHUB_ACTION_PATH].filter(Boolean),
   allowFilesOutsideWorkspace: true,
   exclude: ['**/node_modules/**']

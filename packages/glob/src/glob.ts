@@ -23,7 +23,7 @@ export async function create(
  *
  * @param patterns  Patterns separated by newlines
  * @param currentWorkspace  Workspace used when matching files
- * @param options   Glob options
+ * @param options   Hash file options
  * @param verbose   Enables verbose logging
  */
 export async function hashFiles(
@@ -36,6 +36,7 @@ export async function hashFiles(
   if (options && typeof options.followSymbolicLinks === 'boolean') {
     followSymbolicLinks = options.followSymbolicLinks
   }
+
   const globber = await create(patterns, {followSymbolicLinks})
-  return _hashFiles(globber, currentWorkspace, verbose)
+  return _hashFiles(globber, currentWorkspace, options, verbose)
 }
